@@ -54,6 +54,34 @@ export function crearUsuario(usuario, nombre, contrasena, perfil = 'inventario')
   }
 }
 
+export function promoverUsuarioAAdministrador(usuario) {
+  const identificador = typeof usuario === 'string' ? usuario.trim() : '';
+
+  if (!identificador || identificador.length > 40) {
+    throw new ErrorUsuario('Selecciona una cuenta válida.');
+  }
+
+  const resultado = db.prepare(`
+    UPDATE usuarios
+    SET perfil = 'administrador'
+    WHERE usuario = ? AND perfil = 'inventario' AND activo = 1
+  `).run(identificador);
+
+  if (resultado.changes > 0) return true;
+
+  const cuenta = db.prepare(`
+    SELECT perfil FROM usuarios WHERE usuario = ? AND activo = 1
+  `).get(identificador);
+
+  if (!cuenta) {
+    throw new ErrorUsuario('No se encontró una cuenta activa con ese usuario.');
+  }
+
+  if (cuenta.perfil === 'administrador') return false;
+
+  throw new ErrorUsuario('No se pudo actualizar el perfil de la cuenta.');
+}
+
 export function restablecerContrasena(usuario, contrasena) {
   const identificador = typeof usuario === 'string' ? usuario.trim() : '';
 

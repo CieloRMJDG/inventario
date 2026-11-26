@@ -3,6 +3,7 @@ import { db } from './db.js';
 import {
   verificarCredenciales,
   crearUsuario,
+  promoverUsuarioAAdministrador,
   restablecerContrasena,
   ErrorUsuario
 } from './autenticacion.js';
@@ -17,10 +18,12 @@ import { registrarMovimiento, ErrorMovimiento } from './movimientos.js';
 
 const host = '0.0.0.0';
 const puerto = Number(process.env.PORT || 3000);
-const origenFrontend = new URL(
+const origenesFrontend = new Set((
   process.env.FRONTEND_URL || 'http://localhost:3000'
-).origin;
-const cookieSegura = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+).split(',').map(origen => new URL(origen.trim()).origin));
+const atributosCookie = process.env.NODE_ENV === 'production'
+  ? '; SameSite=None; Secure'
+  : '; SameSite=Lax';
 
 class ErrorSolicitud extends Error {
   constructor(mensaje, estado = 400) {
@@ -35,8 +38,8 @@ function responderJson(respuesta, estado, contenido) {
 }
 
 function exigirOrigen(solicitud) {
-  if (solicitud.headers.origin !== origenFrontend) {
-    throw new ErrorSolicitud('Abre la aplicación desde su dirección de Vercel.', 403);
+  if (!origenesFrontend.has(solicitud.headers.origin)) {
+    throw new ErrorSolicitud('Abre la aplicación desde un origen autorizado.', 403);
   }
 }
 
@@ -121,6 +124,27 @@ const server = createServer(async (solicitud, respuesta) => {
   try {
     const { pathname: ruta } = new URL(solicitud.url, 'http://localhost');
 
+    if (ruta.startsWith('/api/')) {
+      const origen = solicitud.headers.origin;
+
+      if (origenesFrontend.has(origen)) {
+        respuesta.setHeader('Access-Control-Allow-Origin', origen);
+        respuesta.setHeader('Access-Control-Allow-Credentials', 'true');
+        respuesta.setHeader('Vary', 'Origin');
+      }
+
+      if (solicitud.method === 'OPTIONS') {
+        if (!origenesFrontend.has(origen)) {
+          return responderJson(respuesta, 403, { error: 'Origen no autorizado.' });
+        }
+
+        respuesta.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE');
+        respuesta.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        respuesta.writeHead(204);
+        return respuesta.end();
+      }
+    }
+
     if (solicitud.method === 'GET' && ruta === '/api/health') {
       return responderJson(respuesta, 200, { status: 'ok' });
     }
@@ -139,7 +163,7 @@ const server = createServer(async (solicitud, respuesta) => {
       const token = crearSesion(cuenta.id);
       respuesta.setHeader(
         'Set-Cookie',
-        `sesion=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${DURACION_SESION}${cookieSegura}`
+        `sesion=${token}; HttpOnly; Path=/; Max-Age=${DURACION_SESION}${atributosCookie}`
       );
       return responderJson(respuesta, 200, { usuario: cuenta });
     }
@@ -149,7 +173,7 @@ const server = createServer(async (solicitud, respuesta) => {
       cerrarSesion(solicitud.headers.cookie);
       respuesta.setHeader(
         'Set-Cookie',
-        `sesion=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${cookieSegura}`
+        `sesion=; HttpOnly; Path=/; Max-Age=0${atributosCookie}`
       );
       return responderJson(respuesta, 200, { status: 'ok' });
     }
@@ -187,9 +211,9 @@ const server = createServer(async (solicitud, respuesta) => {
     if (solicitud.method === 'GET' && ruta === '/api/usuarios') {
       if (!exigirAdministrador(usuario, respuesta)) return;
       const cuentas = db.prepare(`
-        SELECT usuario, nombre
+        SELECT usuario, nombre, perfil
         FROM usuarios
-        WHERE perfil = 'inventario' AND activo = 1
+        WHERE activo = 1
         ORDER BY nombre, usuario
       `).all();
       return responderJson(respuesta, 200, cuentas);
@@ -219,6 +243,15 @@ const server = createServer(async (solicitud, respuesta) => {
 
       crearUsuario(datos.usuario, datos.nombre, datos.contrasena, 'inventario');
       return responderJson(respuesta, 201, { status: 'created' });
+    }
+
+    if (solicitud.method === 'POST' && ruta === '/api/usuarios/promover') {
+      if (!exigirAdministrador(usuario, respuesta)) return;
+      const datos = await leerJson(solicitud);
+      const promovido = promoverUsuarioAAdministrador(datos.usuario);
+      return responderJson(respuesta, 200, {
+        status: promovido ? 'promoted' : 'already_admin'
+      });
     }
 
     if (solicitud.method === 'POST' && ruta === '/api/usuarios/restablecer') {

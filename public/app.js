@@ -1,4 +1,11 @@
 const app = document.querySelector('#app');
+const apiBase = window.location.hostname.endsWith('.github.io')
+  ? 'https://inventario-backend-cielo.onrender.com'
+  : '';
+
+function enlace(ruta) {
+  return `#${ruta}`;
+}
 
 const escapar = valor => String(valor ?? '').replace(/[&<>"']/g, caracter => ({
   '&': '&amp;',
@@ -9,8 +16,8 @@ const escapar = valor => String(valor ?? '').replace(/[&<>"']/g, caracter => ({
 })[caracter]);
 
 async function api(ruta, opciones = {}) {
-  const respuesta = await fetch(ruta, {
-    credentials: 'same-origin',
+  const respuesta = await fetch(`${apiBase}${ruta}`, {
+    credentials: 'include',
     ...opciones,
     headers: {
       ...(opciones.body ? { 'Content-Type': 'application/json' } : {}),
@@ -51,11 +58,11 @@ function mostrarError(error) {
 }
 
 function formularioApi(ruta, redireccion, contenido, clase = '') {
-  return `<form class="${clase}" data-api="${ruta}" data-redirect="${redireccion}">${contenido}</form>`;
+  return `<form class="${clase}" data-api="${ruta}" data-redirect="${enlace(redireccion)}">${contenido}</form>`;
 }
 
 function botonVolver() {
-  return '<p><a href="/inventario">Volver a Artículos</a></p>';
+  return `<p><a href="${enlace('/inventario')}">Volver a Artículos</a></p>`;
 }
 
 function renderizarIngreso() {
@@ -95,7 +102,7 @@ function renderizarArticulos(usuario, articulos) {
       <td>${escapar(articulo.talla || '—')}</td>
       <td>${articulo.stock_inicial}</td>
       <td>${articulo.stock_actual}</td>
-      <td><a href="/inventario/movimiento?codigo=${encodeURIComponent(articulo.codigo)}">Mover stock</a></td>
+      <td><a href="${enlace(`/inventario/movimiento?codigo=${encodeURIComponent(articulo.codigo)}`)}">Mover stock</a></td>
     </tr>
   `).join('');
 
@@ -108,10 +115,10 @@ function renderizarArticulos(usuario, articulos) {
       ${formularioApi('/api/session', '/', '<button class="boton-secundario" type="submit">Cerrar sesión</button>')}
     </div>
     <nav class="acciones" aria-label="Acciones del inventario">
-      <a class="boton" href="/inventario/nuevo">+ Nuevo artículo</a>
-      <a class="boton boton-secundario" href="/inventario/historial">Historial</a>
+      <a class="boton" href="${enlace('/inventario/nuevo')}">+ Nuevo artículo</a>
+      <a class="boton boton-secundario" href="${enlace('/inventario/historial')}">Historial</a>
       ${usuario.perfil === 'administrador'
-        ? '<a class="boton boton-secundario" href="/usuarios">Administrar usuarios</a>'
+        ? `<a class="boton boton-secundario" href="${enlace('/usuarios')}">Administrar usuarios</a>`
         : ''}
     </nav>
     <div class="busqueda-articulos" role="search">
@@ -172,15 +179,25 @@ function renderizarArticulos(usuario, articulos) {
 }
 
 async function renderizarUsuarios(consulta) {
-  const cuentas = await api('/api/usuarios');
+  const usuarios = await api('/api/usuarios');
+  const cuentas = usuarios.filter(cuenta => cuenta.perfil === 'inventario');
   const mensaje = consulta.get('registrado') === '1'
     ? 'Cuenta de inventario creada correctamente.'
-    : consulta.get('restablecida') === '1'
-      ? 'La contraseña se restableció correctamente.'
-      : '';
+    : consulta.get('promovido') === '1'
+      ? 'La cuenta ahora tiene perfil de administrador.'
+      : consulta.get('restablecida') === '1'
+        ? 'La contraseña se restableció correctamente.'
+        : '';
   const opciones = cuentas.map(cuenta =>
     `<option value="${escapar(cuenta.usuario)}">${escapar(cuenta.nombre)} (${escapar(cuenta.usuario)})</option>`
   ).join('');
+  const filasUsuarios = usuarios.map(cuenta => `
+    <tr>
+      <td>${escapar(cuenta.nombre)}</td>
+      <td>${escapar(cuenta.usuario)}</td>
+      <td>${cuenta.perfil === 'administrador' ? 'Administrador' : 'Inventario'}</td>
+    </tr>
+  `).join('');
 
   pagina('Administrar usuarios', `
     <header class="introduccion-formulario">
@@ -208,6 +225,26 @@ async function renderizarUsuarios(consulta) {
         </label>
         <div class="acciones-formulario"><button type="submit">Registrar persona</button></div>
       `, 'formulario-articulo')}
+    </section>
+    <section class="seccion-administracion">
+      <h2>Promover a administrador</h2>
+      <p>Esto conserva la contraseña actual y concede permisos de administración.</p>
+      ${cuentas.length
+        ? formularioApi('/api/usuarios/promover', '/usuarios?promovido=1', `
+            <label class="campo">Cuenta de inventario
+              <select name="usuario" required>
+                <option value="">Selecciona una cuenta</option>${opciones}
+              </select>
+            </label>
+            <div class="acciones-formulario"><button type="submit">Promover cuenta</button></div>
+          `, 'formulario-articulo')
+        : '<p>No hay cuentas activas de inventario para promover.</p>'}
+      <div class="tabla">
+        <table aria-label="Perfiles de usuario">
+          <thead><tr><th scope="col">Nombre</th><th scope="col">Usuario</th><th scope="col">Perfil</th></tr></thead>
+          <tbody>${filasUsuarios || '<tr><td colspan="3">No hay cuentas activas.</td></tr>'}</tbody>
+        </table>
+      </div>
     </section>
     <section class="seccion-administracion">
       <h2>Restablecer contraseña</h2>
@@ -272,7 +309,7 @@ async function renderizarNuevoArticulo() {
         <input name="stock_inicial" type="number" min="0" step="1" value="0" required>
       </label>
       <div class="acciones-formulario">
-        <button type="submit">Guardar artículo</button><a href="/inventario">Volver a Artículos</a>
+        <button type="submit">Guardar artículo</button><a href="${enlace('/inventario')}">Volver a Artículos</a>
       </div>
     `, 'formulario-articulo')}
   `);
@@ -313,7 +350,7 @@ async function renderizarMovimiento(codigo) {
       <p><label>Cantidad <input name="cantidad" type="number" min="0" step="1" required></label></p>
       <p>Para un ajuste, ingresa el total que contaste físicamente y escribe el motivo.</p>
       <p><label>Motivo <input name="motivo"></label></p>
-      <button type="submit">Guardar movimiento</button> <a href="/inventario">Volver a Artículos</a>
+      <button type="submit">Guardar movimiento</button> <a href="${enlace('/inventario')}">Volver a Artículos</a>
     `)}
   `);
   document.body.className = '';
@@ -358,8 +395,16 @@ async function renderizarHistorial() {
 }
 
 async function iniciar() {
-  const ruta = window.location.pathname;
-  const consulta = new URLSearchParams(window.location.search);
+  const fragmento = window.location.hash.slice(1) || (
+    window.location.hostname.endsWith('.github.io')
+      ? '/'
+      : `${window.location.pathname}${window.location.search}`
+  );
+  const indiceConsulta = fragmento.indexOf('?');
+  const ruta = indiceConsulta < 0 ? fragmento : fragmento.slice(0, indiceConsulta);
+  const consulta = new URLSearchParams(
+    indiceConsulta < 0 ? '' : fragmento.slice(indiceConsulta + 1)
+  );
   let usuario;
 
   try {
@@ -367,7 +412,7 @@ async function iniciar() {
   } catch (error) {
     if (error.message !== 'Inicia sesión para continuar.') throw error;
     if (ruta !== '/') {
-      window.location.replace('/');
+      window.location.replace(enlace('/'));
       return;
     }
     renderizarIngreso();
@@ -375,7 +420,7 @@ async function iniciar() {
   }
 
   if (ruta === '/') {
-    window.location.replace('/inventario');
+    window.location.replace(enlace('/inventario'));
   } else if (ruta === '/inventario') {
     renderizarArticulos(usuario, await api('/api/articulos'));
   } else if (ruta === '/inventario/nuevo') {
@@ -409,7 +454,12 @@ app.addEventListener('submit', async evento => {
   }
 });
 
-iniciar().catch(error => {
-  console.error(error);
-  pagina('Error', `<h1>No se pudo cargar el inventario</h1><p role="alert">${escapar(error.message)}</p>`);
-});
+function manejarRuta() {
+  iniciar().catch(error => {
+    console.error(error);
+    pagina('Error', `<h1>No se pudo cargar el inventario</h1><p role="alert">${escapar(error.message)}</p>`);
+  });
+}
+
+window.addEventListener('hashchange', manejarRuta);
+manejarRuta();
