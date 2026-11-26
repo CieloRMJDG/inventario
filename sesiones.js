@@ -1,44 +1,41 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { db } from './db.js';
 
-const sesiones = new Map();
 export const DURACION_SESION = 8 * 60 * 60; // segundos
 
-const buscarUsuarioActivo = db.prepare(`
-  SELECT id, nombre, perfil
-  FROM usuarios
-  WHERE id = ? AND activo = 1
-`);
+function hashToken(token) {
+  return createHash('sha256').update(token).digest('hex');
+}
 
-export function crearSesion(usuarioId) {
-  const ahora = Date.now();
-
-  for (const [token, sesion] of sesiones) {
-    if (sesion.vence <= ahora) sesiones.delete(token);
-  }
-
+export async function crearSesion(usuarioId) {
   const token = randomBytes(32).toString('hex');
-  sesiones.set(token, {
-    usuarioId,
-    vence: ahora + DURACION_SESION * 1000
-  });
+  const vence = Date.now() + DURACION_SESION * 1000;
+
+  await db.run('DELETE FROM sesiones WHERE vence <= ?', [Date.now()]);
+  await db.run(
+    'INSERT INTO sesiones (token_hash, usuario_id, vence) VALUES (?, ?, ?)',
+    [hashToken(token), usuarioId, vence]
+  );
 
   return token;
 }
 
-export function obtenerUsuarioDeSesion(cookies = '') {
+export async function obtenerUsuarioDeSesion(cookies = '') {
   const token = cookies.match(/(?:^|;\s*)sesion=([a-f0-9]{64})(?:;|$)/)?.[1];
-  const sesion = sesiones.get(token);
+  if (!token) return null;
 
-  if (!sesion || sesion.vence <= Date.now()) return null;
-
-  return buscarUsuarioActivo.get(sesion.usuarioId) ?? null;
+  return await db.get(`
+    SELECT u.id, u.nombre, u.perfil
+    FROM sesiones AS s
+    JOIN usuarios AS u ON u.id = s.usuario_id
+    WHERE s.token_hash = ? AND s.vence > ? AND u.activo = 1
+  `, [hashToken(token), Date.now()]) ?? null;
 }
 
-export function cerrarSesion(cookies = '') {
+export async function cerrarSesion(cookies = '') {
   const token = cookies.match(/(?:^|;\s*)sesion=([a-f0-9]{64})(?:;|$)/)?.[1];
 
   if (token) {
-    sesiones.delete(token);
+    await db.run('DELETE FROM sesiones WHERE token_hash = ?', [hashToken(token)]);
   }
 }

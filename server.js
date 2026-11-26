@@ -44,8 +44,8 @@ function exigirOrigen(solicitud) {
   }
 }
 
-function exigirUsuario(solicitud, respuesta) {
-  const usuario = obtenerUsuarioDeSesion(solicitud.headers.cookie);
+async function exigirUsuario(solicitud, respuesta) {
+  const usuario = await obtenerUsuarioDeSesion(solicitud.headers.cookie);
 
   if (!usuario) {
     responderJson(respuesta, 401, { error: 'Inicia sesión para continuar.' });
@@ -95,19 +95,19 @@ function comoFormulario(datos) {
   );
 }
 
-function listarArticulos() {
-  return db.prepare(`
+async function listarArticulos() {
+  return db.all(`
     SELECT a.codigo, a.nombre, c.nombre AS categoria, t.nombre AS tipo,
            a.talla, a.stock_inicial, a.stock_actual
     FROM articulos AS a
     JOIN categorias AS c ON c.id = a.categoria_id
     JOIN tipos AS t ON t.id = a.tipo_id
     ORDER BY a.nombre, a.codigo
-  `).all();
+  `);
 }
 
-function listarHistorial() {
-  return db.prepare(`
+async function listarHistorial() {
+  const movimientos = await db.all(`
     SELECT m.fecha, m.tipo_movimiento, m.stock_anterior,
            m.stock_posterior, m.motivo, a.codigo,
            a.nombre AS articulo, c.nombre AS categoria, u.nombre AS usuario
@@ -116,7 +116,14 @@ function listarHistorial() {
     JOIN categorias AS c ON c.id = a.categoria_id
     JOIN usuarios AS u ON u.id = m.usuario_id
     ORDER BY m.id DESC
-  `).all();
+  `);
+
+  return movimientos.map(movimiento => ({
+    ...movimiento,
+    fecha: movimiento.fecha instanceof Date
+      ? movimiento.fecha.toISOString().slice(0, 19).replace('T', ' ')
+      : movimiento.fecha
+  }));
 }
 
 const server = createServer(async (solicitud, respuesta) => {
@@ -161,7 +168,7 @@ const server = createServer(async (solicitud, respuesta) => {
         });
       }
 
-      const token = crearSesion(cuenta.id);
+      const token = await crearSesion(cuenta.id);
       respuesta.setHeader(
         'Set-Cookie',
         `sesion=${token}; HttpOnly; Path=/; Max-Age=${DURACION_SESION}${atributosCookie}`
@@ -171,7 +178,7 @@ const server = createServer(async (solicitud, respuesta) => {
 
     if (ruta === '/api/session' && solicitud.method === 'DELETE') {
       exigirOrigen(solicitud);
-      cerrarSesion(solicitud.headers.cookie);
+      await cerrarSesion(solicitud.headers.cookie);
       respuesta.setHeader(
         'Set-Cookie',
         `sesion=; HttpOnly; Path=/; Max-Age=0${atributosCookie}`
@@ -184,39 +191,37 @@ const server = createServer(async (solicitud, respuesta) => {
     }
 
     if (ruta === '/api/session' && solicitud.method === 'GET') {
-      const usuario = exigirUsuario(solicitud, respuesta);
+      const usuario = await exigirUsuario(solicitud, respuesta);
       return usuario && responderJson(respuesta, 200, { usuario });
     }
 
-    const usuario = exigirUsuario(solicitud, respuesta);
+    const usuario = await exigirUsuario(solicitud, respuesta);
     if (!usuario) return;
 
     if (solicitud.method === 'GET' && ruta === '/api/articulos') {
-      return responderJson(respuesta, 200, listarArticulos());
+      return responderJson(respuesta, 200, await listarArticulos());
     }
 
     if (solicitud.method === 'GET' && ruta === '/api/opciones-articulos') {
-      const categorias = db.prepare(
-        'SELECT nombre FROM categorias ORDER BY id'
-      ).all();
-      const tipos = db.prepare(
-        'SELECT nombre FROM tipos ORDER BY nombre'
-      ).all();
+      const [categorias, tipos] = await Promise.all([
+        db.all('SELECT nombre FROM categorias ORDER BY id'),
+        db.all('SELECT nombre FROM tipos ORDER BY nombre')
+      ]);
       return responderJson(respuesta, 200, { categorias, tipos });
     }
 
     if (solicitud.method === 'GET' && ruta === '/api/historial') {
-      return responderJson(respuesta, 200, listarHistorial());
+      return responderJson(respuesta, 200, await listarHistorial());
     }
 
     if (solicitud.method === 'GET' && ruta === '/api/usuarios') {
       if (!exigirAdministrador(usuario, respuesta)) return;
-      const cuentas = db.prepare(`
+      const cuentas = await db.all(`
         SELECT usuario, nombre, perfil
         FROM usuarios
         WHERE activo = 1
         ORDER BY nombre, usuario
-      `).all();
+      `);
       return responderJson(respuesta, 200, cuentas);
     }
 
@@ -224,13 +229,13 @@ const server = createServer(async (solicitud, respuesta) => {
 
     if (solicitud.method === 'POST' && ruta === '/api/articulos') {
       const datos = await leerJson(solicitud);
-      guardarArticulo(comoFormulario(datos));
+      await guardarArticulo(comoFormulario(datos));
       return responderJson(respuesta, 201, { status: 'created' });
     }
 
     if (solicitud.method === 'POST' && ruta === '/api/movimientos') {
       const datos = await leerJson(solicitud);
-      registrarMovimiento(comoFormulario(datos), usuario.id);
+      await registrarMovimiento(comoFormulario(datos), usuario.id);
       return responderJson(respuesta, 201, { status: 'created' });
     }
 
@@ -242,14 +247,14 @@ const server = createServer(async (solicitud, respuesta) => {
         throw new ErrorSolicitud('Las contraseñas no coinciden.');
       }
 
-      crearUsuario(datos.usuario, datos.nombre, datos.contrasena, 'inventario');
+      await crearUsuario(datos.usuario, datos.nombre, datos.contrasena, 'inventario');
       return responderJson(respuesta, 201, { status: 'created' });
     }
 
     if (solicitud.method === 'POST' && ruta === '/api/usuarios/promover') {
       if (!exigirAdministrador(usuario, respuesta)) return;
       const datos = await leerJson(solicitud);
-      const promovido = promoverUsuarioAAdministrador(datos.usuario);
+      const promovido = await promoverUsuarioAAdministrador(datos.usuario);
       return responderJson(respuesta, 200, {
         status: promovido ? 'promoted' : 'already_admin'
       });
@@ -263,7 +268,7 @@ const server = createServer(async (solicitud, respuesta) => {
         throw new ErrorSolicitud('Las contraseñas no coinciden.');
       }
 
-      restablecerContrasena(datos.usuario, datos.contrasena_nueva);
+      await restablecerContrasena(datos.usuario, datos.contrasena_nueva);
       return responderJson(respuesta, 200, { status: 'ok' });
     }
 
@@ -304,7 +309,7 @@ if (datosAdministradorInicial.some(valor => valor !== undefined)) {
     );
   } else {
     try {
-      const resultado = aprovisionarAdministrador(...datosAdministradorInicial);
+      const resultado = await aprovisionarAdministrador(...datosAdministradorInicial);
       console.log(
         `Aprovisionamiento de ${datosAdministradorInicial[0]}: ${resultado}.`
       );

@@ -12,7 +12,7 @@ function leerCantidad(texto) {
   return cantidad;
 }
 
-export function registrarMovimiento(datos, usuarioId) {
+export async function registrarMovimiento(datos, usuarioId) {
   const leer = campo => (datos.get(campo) ?? '').trim();
 
   const codigo = leer('codigo');
@@ -34,12 +34,11 @@ export function registrarMovimiento(datos, usuarioId) {
     throw new ErrorMovimiento('Escribe el motivo del ajuste.');
   }
 
-  db.exec('BEGIN IMMEDIATE');
-
-  try {
-    const articulo = db.prepare(
-      'SELECT id, stock_actual FROM articulos WHERE codigo = ?'
-    ).get(codigo);
+  await db.transaction(async transaccion => {
+    const articulo = await transaccion.get(
+      'SELECT id, stock_actual FROM articulos WHERE codigo = ?',
+      [codigo]
+    );
 
     if (!articulo) {
       throw new ErrorMovimiento('No se encontró el artículo.');
@@ -68,19 +67,16 @@ export function registrarMovimiento(datos, usuarioId) {
       throw new ErrorMovimiento('La cantidad contada coincide con el stock actual.');
     }
 
-    db.prepare('UPDATE articulos SET stock_actual = ? WHERE id = ?')
-      .run(posterior, articulo.id);
+    await transaccion.run(
+      'UPDATE articulos SET stock_actual = ? WHERE id = ?',
+      [posterior, articulo.id]
+    );
 
-    db.prepare(`
+    await transaccion.run(`
       INSERT INTO movimientos (
         articulo_id, usuario_id, tipo_movimiento,
         stock_anterior, stock_posterior, motivo
       ) VALUES (?, ?, ?, ?, ?, ?)
-    `).run(articulo.id, usuarioId, tipo, anterior, posterior, motivo);
-
-    db.exec('COMMIT');
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
-  }
+    `, [articulo.id, usuarioId, tipo, anterior, posterior, motivo]);
+  });
 }

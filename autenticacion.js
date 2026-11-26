@@ -4,13 +4,8 @@ import { db } from './db.js';
 
 const calcularHash = promisify(scrypt);
 const hashDePrueba = `${'0'.repeat(32)}:${'0'.repeat(128)}`;
+const [salPrueba, hashPrueba] = hashDePrueba.split(':');
 const perfilesPermitidos = new Set(['inventario', 'administrador']);
-
-const buscarUsuario = db.prepare(`
-  SELECT id, usuario, nombre, contrasena_hash, perfil
-  FROM usuarios
-  WHERE usuario = ? AND activo = 1
-`);
 
 export class ErrorUsuario extends Error {}
 
@@ -29,7 +24,7 @@ function hashDeContrasena(contrasena) {
   return `${sal}:${hash}`;
 }
 
-export function crearUsuario(usuario, nombre, contrasena, perfil = 'inventario') {
+export async function crearUsuario(usuario, nombre, contrasena, perfil = 'inventario') {
   const identificador = typeof usuario === 'string' ? usuario.trim() : '';
   const nombreVisible = typeof nombre === 'string' ? nombre.trim() : '';
 
@@ -43,35 +38,35 @@ export function crearUsuario(usuario, nombre, contrasena, perfil = 'inventario')
     throw new ErrorUsuario('Selecciona un perfil válido.');
   }
 
-  const resultado = db.prepare(`
+  const resultado = await db.run(`
     INSERT INTO usuarios (usuario, nombre, contrasena_hash, perfil)
     VALUES (?, ?, ?, ?)
-    ON CONFLICT(usuario) DO NOTHING
-  `).run(identificador, nombreVisible, hashDeContrasena(contrasena), perfil);
+    ON CONFLICT DO NOTHING
+  `, [identificador, nombreVisible, hashDeContrasena(contrasena), perfil]);
 
   if (resultado.changes === 0) {
     throw new ErrorUsuario('Ese usuario ya existe.');
   }
 }
 
-export function promoverUsuarioAAdministrador(usuario) {
+export async function promoverUsuarioAAdministrador(usuario) {
   const identificador = typeof usuario === 'string' ? usuario.trim() : '';
 
   if (!identificador || identificador.length > 40) {
     throw new ErrorUsuario('Selecciona una cuenta válida.');
   }
 
-  const resultado = db.prepare(`
+  const resultado = await db.run(`
     UPDATE usuarios
     SET perfil = 'administrador'
-    WHERE usuario = ? AND perfil = 'inventario' AND activo = 1
-  `).run(identificador);
+    WHERE lower(usuario) = lower(?) AND perfil = 'inventario' AND activo = 1
+  `, [identificador]);
 
   if (resultado.changes > 0) return true;
 
-  const cuenta = db.prepare(`
-    SELECT perfil FROM usuarios WHERE usuario = ? AND activo = 1
-  `).get(identificador);
+  const cuenta = await db.get(`
+    SELECT perfil FROM usuarios WHERE lower(usuario) = lower(?) AND activo = 1
+  `, [identificador]);
 
   if (!cuenta) {
     throw new ErrorUsuario('No se encontró una cuenta activa con ese usuario.');
@@ -82,34 +77,34 @@ export function promoverUsuarioAAdministrador(usuario) {
   throw new ErrorUsuario('No se pudo actualizar el perfil de la cuenta.');
 }
 
-export function aprovisionarAdministrador(usuario, nombre, contrasena) {
+export async function aprovisionarAdministrador(usuario, nombre, contrasena) {
   const identificador = typeof usuario === 'string' ? usuario.trim() : '';
 
   if (!identificador || identificador.length > 40) {
     throw new ErrorUsuario('Escribe un usuario válido para la administración.');
   }
 
-  const cuenta = db.prepare(`
+  const cuenta = await db.get(`
     SELECT perfil, activo
     FROM usuarios
-    WHERE usuario = ?
-  `).get(identificador);
+    WHERE lower(usuario) = lower(?)
+  `, [identificador]);
 
   if (cuenta) {
     if (!cuenta.activo) {
       throw new ErrorUsuario('La cuenta existe, pero está inactiva.');
     }
 
-    return promoverUsuarioAAdministrador(identificador)
+    return await promoverUsuarioAAdministrador(identificador)
       ? 'promoted'
       : 'already_admin';
   }
 
-  crearUsuario(identificador, nombre, contrasena, 'administrador');
+  await crearUsuario(identificador, nombre, contrasena, 'administrador');
   return 'created';
 }
 
-export function restablecerContrasena(usuario, contrasena) {
+export async function restablecerContrasena(usuario, contrasena) {
   const identificador = typeof usuario === 'string' ? usuario.trim() : '';
 
   if (!identificador) {
@@ -118,11 +113,11 @@ export function restablecerContrasena(usuario, contrasena) {
 
   validarContrasena(contrasena);
 
-  const resultado = db.prepare(`
+  const resultado = await db.run(`
     UPDATE usuarios
     SET contrasena_hash = ?
-    WHERE usuario = ? AND perfil = 'inventario' AND activo = 1
-  `).run(hashDeContrasena(contrasena), identificador);
+    WHERE lower(usuario) = lower(?) AND perfil = 'inventario' AND activo = 1
+  `, [hashDeContrasena(contrasena), identificador]);
 
   if (resultado.changes === 0) {
     throw new ErrorUsuario('No se encontró una cuenta de inventario activa.');
@@ -134,8 +129,14 @@ export async function verificarCredenciales(usuario, contrasena) {
     return null;
   }
 
-  const cuenta = buscarUsuario.get(usuario.trim());
-  const [sal, hashGuardado] = (cuenta?.contrasena_hash ?? hashDePrueba).split(':');
+  const cuenta = await db.get(`
+    SELECT id, usuario, nombre, contrasena_hash, perfil
+    FROM usuarios
+    WHERE lower(usuario) = lower(?) AND activo = 1
+  `, [usuario.trim()]);
+  const partesHash = (cuenta?.contrasena_hash ?? '').split(':');
+  const sal = /^[0-9a-f]{32}$/.test(partesHash[0] ?? '') ? partesHash[0] : salPrueba;
+  const hashGuardado = /^[0-9a-f]{128}$/.test(partesHash[1] ?? '') ? partesHash[1] : hashPrueba;
 
   const hashIngresado = await calcularHash(contrasena, sal, 64, {
     N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024

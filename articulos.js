@@ -2,7 +2,7 @@ import { db } from './db.js';
 
 export class ErrorArticulo extends Error {}
 
-export function guardarArticulo(datos) {
+export async function guardarArticulo(datos) {
   const leer = campo => (datos.get(campo) ?? '').trim();
 
   const codigo = leer('codigo');
@@ -30,53 +30,49 @@ export function guardarArticulo(datos) {
     throw new ErrorArticulo('Selecciona un tipo existente o escribe uno nuevo de hasta 30 caracteres.');
   }
 
-  const categoriaGuardada = db.prepare(
-    'SELECT id FROM categorias WHERE nombre = ?'
-  ).get(categoria);
+  await db.transaction(async transaccion => {
+    const categoriaGuardada = await transaccion.get(
+      'SELECT id FROM categorias WHERE nombre = ?',
+      [categoria]
+    );
 
-  if (!categoriaGuardada) {
-    throw new ErrorArticulo('Selecciona una categoría válida.');
-  }
+    if (!categoriaGuardada) {
+      throw new ErrorArticulo('Selecciona una categoría válida.');
+    }
 
-  db.exec('BEGIN IMMEDIATE');
-
-  try {
-    const duplicado = db.prepare(
-      'SELECT id FROM articulos WHERE codigo = ?'
-    ).get(codigo);
+    const duplicado = await transaccion.get(
+      'SELECT id FROM articulos WHERE codigo = ?',
+      [codigo]
+    );
 
     if (duplicado) {
       throw new ErrorArticulo('Ya existe un artículo con ese código.');
     }
 
     if (tipoNuevo) {
-      db.prepare(`
+      await transaccion.run(`
         INSERT INTO tipos (nombre) VALUES (?)
         ON CONFLICT(nombre) DO NOTHING
-      `).run(tipoNuevo);
+      `, [tipoNuevo]);
     }
 
-    const tipoGuardado = db.prepare(
-      'SELECT id FROM tipos WHERE nombre = ?'
-    ).get(tipoNuevo || tipoExistente);
+    const tipoGuardado = await transaccion.get(
+      'SELECT id FROM tipos WHERE nombre = ?',
+      [tipoNuevo || tipoExistente]
+    );
 
     if (!tipoGuardado) {
       throw new ErrorArticulo('Selecciona un tipo válido.');
     }
 
-    db.prepare(`
+    await transaccion.run(`
       INSERT INTO articulos (
         codigo, nombre, categoria_id, tipo_id, talla, stock_inicial, stock_actual
       )
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `, [
       codigo, nombre, categoriaGuardada.id, tipoGuardado.id,
       talla || null, stockInicial, stockInicial
-    );
-
-    db.exec('COMMIT');
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
-  }
+    ]);
+  });
 }

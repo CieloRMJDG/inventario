@@ -39,12 +39,12 @@ try {
     throw new Error('Escribe la misma contraseña dos veces.');
   }
 
-  crearUsuario(usuario, nombre, contrasena, perfil);
+  await crearUsuario(usuario, nombre, contrasena, perfil);
 
   console.log(`Cuenta ${perfil} creada: ${usuario}`);
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;
 } finally {
-  db.close();
+  await db.close();
 }

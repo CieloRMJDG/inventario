@@ -33,9 +33,9 @@ async function api(ruta, opciones = {}) {
   return contenido;
 }
 
-function enviarFormulario(ruta, datos) {
+function enviarFormulario(ruta, datos, metodo = 'POST') {
   return api(ruta, {
-    method: 'POST',
+    method: metodo,
     body: JSON.stringify(datos)
   });
 }
@@ -57,8 +57,8 @@ function mostrarError(error) {
   aviso.textContent = error.message;
 }
 
-function formularioApi(ruta, redireccion, contenido, clase = '') {
-  return `<form class="${clase}" data-api="${ruta}" data-redirect="${enlace(redireccion)}">${contenido}</form>`;
+function formularioApi(ruta, redireccion, contenido, clase = '', metodo = 'POST') {
+  return `<form class="${clase}" data-api="${ruta}" data-metodo="${metodo}" data-redirect="${enlace(redireccion)}">${contenido}</form>`;
 }
 
 function botonVolver() {
@@ -112,7 +112,7 @@ function renderizarArticulos(usuario, articulos) {
         <h1>Artículos</h1>
         <p class="subtitulo">Sesión de ${escapar(usuario.nombre)}</p>
       </div>
-      ${formularioApi('/api/session', '/', '<button class="boton-secundario" type="submit">Cerrar sesión</button>')}
+      ${formularioApi('/api/session', '/', '<button class="boton-secundario" type="submit">Cerrar sesión</button>', '', 'DELETE')}
     </div>
     <nav class="acciones" aria-label="Acciones del inventario">
       <a class="boton" href="${enlace('/inventario/nuevo')}">+ Nuevo artículo</a>
@@ -447,7 +447,11 @@ app.addEventListener('submit', async evento => {
 
   try {
     const datos = Object.fromEntries(new FormData(formulario).entries());
-    await enviarFormulario(formulario.dataset.api, datos);
+    await enviarFormulario(
+      formulario.dataset.api,
+      datos,
+      formulario.dataset.metodo || 'POST'
+    );
     window.location.assign(formulario.dataset.redirect);
   } catch (error) {
     mostrarError(error);

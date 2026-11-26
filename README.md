@@ -25,22 +25,26 @@ node crear-usuario.js usuario "Nombre de la persona"
 ## Despliegue en Vercel y Render
 
 El frontend estático vive en `public/` y se despliega en Vercel o GitHub Pages. El API
-y SQLite corren en Render. El plan Free no tiene disco persistente: los datos SQLite
-pueden perderse cuando el servicio se reinicia o suspende. No lo uses para datos que
-deban conservarse; para eso, configura almacenamiento persistente de pago.
+corre en Render y usa PostgreSQL cuando se configura `DATABASE_URL`; sin esa variable,
+usa SQLite local, que no es persistente en Render Free. Crea una base PostgreSQL
+gestionada y guarda su cadena de conexión únicamente en **Render > Environment** como
+`DATABASE_URL`. Al arrancar, el API crea el esquema y las categorías iniciales.
 Vercel reenvía `/api/*` al servicio `inventario-backend-cielo`; en GitHub Pages el
 navegador llama directamente a ese API.
 
 1. Sube este proyecto a un repositorio de GitHub.
 2. En Vercel, importa ese repositorio como proyecto estático y conserva la carpeta
    de salida `public` y el `vercel.json` del proyecto.
-3. En Render, crea un **Blueprint** desde el mismo repositorio y acepta la
+3. En un proveedor PostgreSQL gestionado, crea una base y copia su cadena de conexión.
+   No la compartas por el chat ni la guardes en el repositorio.
+4. En Render, crea un **Blueprint** desde el mismo repositorio y acepta la
    configuración gratuita de `render.yaml`.
-4. En Render, configura `FRONTEND_URL` con el origen exacto de Vercel
+5. En Render, configura `DATABASE_URL` con la cadena de conexión PostgreSQL y
+   `FRONTEND_URL` con el origen exacto de Vercel
    (sin `/` al final). Si usarás también GitHub Pages, agrega ambos orígenes separados
    por coma, por ejemplo `https://bodegastakeinventario.vercel.app,https://cielormjdg.github.io`.
    Vuelve a desplegar el servicio de Render después de guardarlo.
-5. En la Shell del servicio de Render, crea la primera cuenta de administración:
+6. Crea la primera cuenta de administración con la Shell de Render:
 
    ```sh
    node crear-usuario.js admin "Nombre de administración" administrador
@@ -51,7 +55,13 @@ navegador llama directamente a ese API.
 El hostname de Render configurado en `vercel.json` es
 `inventario-backend-cielo.onrender.com`; si Render asigna otro hostname, actualiza
 el destino de la regla `/api/:path*` y la constante `apiBase` en `public/app.js`.
-Las sesiones duran 8 horas y se invalidan cuando el proceso de Render se reinicia.
+Las sesiones duran 8 horas y se guardan en la base de datos, así que sobreviven a los
+reinicios del servicio.
+
+La base PostgreSQL nueva no importa automáticamente los datos de SQLite local ni de
+una instancia anterior de Render. Antes de cambiar `DATABASE_URL`, exporta cualquier
+información que quieras conservar y migra los datos explícitamente. No subas
+`datos/inventario.sqlite` a GitHub.
 
 ## Despliegue adicional en GitHub Pages
 
