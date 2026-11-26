@@ -2,21 +2,15 @@ services:
   - type: web
     name: inventario-backend-cielo
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     buildCommand: npm install --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health
-    disk:
-      name: inventario-datos
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
       - key: NODE_ENV
         value: production
-      - key: DATABASE_PATH
-        value: /var/data/inventario.sqlite
       - key: FRONTEND_URL
         sync: false
