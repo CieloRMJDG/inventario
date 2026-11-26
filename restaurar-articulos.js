@@ -68,10 +68,16 @@ export const articulos = [
   { codigo: 'MKCO-TOTE-01', nombre: 'TOTE BAGS NEGRAS LOGO BLANCO', categoria: 'Marketing', tipo: 'Merch mkt', talla: '', inicial: 97, actual: 97 }
 ];
 
-export async function restaurarArticulos({ soloSiVacio = false, confirmar = false } = {}) {
-  if (soloSiVacio) {
-    const conteo = await db.get('SELECT COUNT(*) AS n FROM articulos');
-    if (Number(conteo?.n ?? 0) > 0) {
+export async function restaurarArticulos({ soloSiFaltan = false, confirmar = false } = {}) {
+  if (soloSiFaltan) {
+    const codigos = articulos.map(articulo => articulo.codigo);
+    const marcadores = codigos.map(() => '?').join(',');
+    const existentes = await db.get(
+      `SELECT COUNT(*) AS n FROM articulos WHERE codigo IN (${marcadores})`,
+      codigos
+    );
+
+    if (Number(existentes?.n ?? 0) > 0) {
       return { insertados: 0, omitidos: 0, omitida: true };
     }
   }

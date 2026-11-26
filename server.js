@@ -321,11 +321,11 @@ if (datosAdministradorInicial.some(valor => valor !== undefined)) {
   }
 }
 
-// Si la base está vacía (por ejemplo, SQLite efímero en Render Free), repone los
-// artículos recuperados de las capturas. Nunca borra ni sobrescribe registros.
+// Si no existe ninguno de los artículos recuperados (por ejemplo, tras un reinicio
+// con SQLite efímero en Render Free), los repone. Nunca borra ni sobrescribe registros.
 try {
   const restauracion = await restaurarArticulos({
-    soloSiVacio: true,
+    soloSiFaltan: true,
     confirmar: true
   });
   if (!restauracion.omitida) {
