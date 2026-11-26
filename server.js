@@ -3,6 +3,7 @@ import { db } from './db.js';
 import {
   verificarCredenciales,
   crearUsuario,
+  aprovisionarAdministrador,
   promoverUsuarioAAdministrador,
   restablecerContrasena,
   ErrorUsuario
@@ -287,6 +288,32 @@ const server = createServer(async (solicitud, respuesta) => {
     });
   }
 });
+
+const datosAdministradorInicial = [
+  process.env.BOOTSTRAP_ADMIN_USERNAME,
+  process.env.BOOTSTRAP_ADMIN_NAME,
+  process.env.BOOTSTRAP_ADMIN_PASSWORD
+];
+
+if (datosAdministradorInicial.some(valor => valor !== undefined)) {
+  if (datosAdministradorInicial.some(
+    valor => typeof valor !== 'string' || !valor.trim()
+  )) {
+    console.error(
+      'El aprovisionamiento requiere BOOTSTRAP_ADMIN_USERNAME, BOOTSTRAP_ADMIN_NAME y BOOTSTRAP_ADMIN_PASSWORD.'
+    );
+  } else {
+    try {
+      const resultado = aprovisionarAdministrador(...datosAdministradorInicial);
+      console.log(
+        `Aprovisionamiento de ${datosAdministradorInicial[0]}: ${resultado}.`
+      );
+    } catch (error) {
+      if (!(error instanceof ErrorUsuario)) throw error;
+      console.error(`No se pudo aprovisionar el administrador: ${error.message}`);
+    }
+  }
+}
 
 server.listen(puerto, host, () => {
   console.log(`API de inventario escuchando en el puerto ${puerto}.`);

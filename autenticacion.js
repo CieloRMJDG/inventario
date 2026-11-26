@@ -82,6 +82,33 @@ export function promoverUsuarioAAdministrador(usuario) {
   throw new ErrorUsuario('No se pudo actualizar el perfil de la cuenta.');
 }
 
+export function aprovisionarAdministrador(usuario, nombre, contrasena) {
+  const identificador = typeof usuario === 'string' ? usuario.trim() : '';
+
+  if (!identificador || identificador.length > 40) {
+    throw new ErrorUsuario('Escribe un usuario válido para la administración.');
+  }
+
+  const cuenta = db.prepare(`
+    SELECT perfil, activo
+    FROM usuarios
+    WHERE usuario = ?
+  `).get(identificador);
+
+  if (cuenta) {
+    if (!cuenta.activo) {
+      throw new ErrorUsuario('La cuenta existe, pero está inactiva.');
+    }
+
+    return promoverUsuarioAAdministrador(identificador)
+      ? 'promoted'
+      : 'already_admin';
+  }
+
+  crearUsuario(identificador, nombre, contrasena, 'administrador');
+  return 'created';
+}
+
 export function restablecerContrasena(usuario, contrasena) {
   const identificador = typeof usuario === 'string' ? usuario.trim() : '';
 

@@ -67,3 +67,21 @@ GitHub Pages y Render son dominios distintos. El inicio de sesión usa una cooki
 `SameSite=None; Secure`, pero navegadores que bloqueen cookies de terceros pueden
 impedir que la sesión funcione desde Pages; en ese caso, usa Vercel o configura
 ambos servicios bajo un dominio propio.
+
+### Aprovisionar un administrador en Render sin Shell
+
+No subas `datos/inventario.sqlite` a GitHub: contiene cuentas y datos privados, y la
+base local no es la base de producción. Si no tienes acceso a la Shell de Render,
+puedes usar temporalmente estas variables privadas en **Environment**:
+
+```text
+BOOTSTRAP_ADMIN_USERNAME=charly
+BOOTSTRAP_ADMIN_NAME=Charly
+BOOTSTRAP_ADMIN_PASSWORD=<contraseña nueva de al menos 12 caracteres>
+```
+
+Al desplegar, una cuenta activa existente se promueve a administradora y conserva su
+contraseña; si no existe, se crea como administradora con la contraseña indicada.
+Una cuenta inactiva no se modifica y el error queda en los logs. Después de verificar
+el resultado en los logs de Render, elimina las tres variables y vuelve a desplegar.
+Nunca pongas la contraseña en GitHub ni en el chat.

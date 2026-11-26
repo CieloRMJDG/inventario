@@ -8,7 +8,11 @@ const directorioTemporal = mkdtempSync(join(tmpdir(), 'inventario-perfiles-'));
 process.env.DATABASE_PATH = join(directorioTemporal, 'inventario.sqlite');
 
 const { db } = await import('../db.js');
-const { promoverUsuarioAAdministrador } = await import('../autenticacion.js');
+const {
+  aprovisionarAdministrador,
+  promoverUsuarioAAdministrador,
+  verificarCredenciales
+} = await import('../autenticacion.js');
 
 after(() => {
   db.close();
@@ -42,5 +46,39 @@ test('promueve una cuenta activa de inventario sin cambiar otras cuentas', () =>
   assert.throws(
     () => promoverUsuarioAAdministrador('no-existe'),
     /No se encontró una cuenta activa/
+  );
+});
+
+test('el aprovisionamiento promueve una cuenta activa y conserva su contraseña', () => {
+  const hashAnterior = 'hash-existente';
+  db.prepare(`
+    INSERT INTO usuarios (usuario, nombre, contrasena_hash, perfil)
+    VALUES (?, ?, ?, ?)
+  `).run('charly', 'Charly', hashAnterior, 'inventario');
+
+  assert.equal(aprovisionarAdministrador('charly', 'Charly', ''), 'promoted');
+  const cuenta = db.prepare(`
+    SELECT perfil, contrasena_hash FROM usuarios WHERE usuario = ?
+  `).get('charly');
+  assert.equal(cuenta.perfil, 'administrador');
+  assert.equal(cuenta.contrasena_hash, hashAnterior);
+  assert.equal(aprovisionarAdministrador('charly', 'Charly', ''), 'already_admin');
+});
+
+test('el aprovisionamiento crea un administrador cuando la cuenta no existe', async () => {
+  const contrasena = 'una-clave-segura-123';
+  assert.equal(
+    aprovisionarAdministrador('nuevo-admin', 'Administrador nuevo', contrasena),
+    'created'
+  );
+  assert.deepEqual(
+    await verificarCredenciales('nuevo-admin', contrasena),
+    {
+      id: db.prepare('SELECT id FROM usuarios WHERE usuario = ?')
+        .get('nuevo-admin').id,
+      usuario: 'nuevo-admin',
+      nombre: 'Administrador nuevo',
+      perfil: 'administrador'
+    }
   );
 });
