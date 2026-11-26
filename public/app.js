@@ -1,6 +1,6 @@
 const app = document.querySelector('#app');
 const apiBase = window.location.hostname.endsWith('.github.io')
-  ? 'https://inventario-backend-cielo.onrender.com'
+  ? 'https://bodegastakeinventario.vercel.app'
   : '';
 
 function enlace(ruta) {

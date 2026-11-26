@@ -1,4 +1,6 @@
 import { createServer } from 'node:http';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { db } from './db.js';
 import {
   verificarCredenciales,
@@ -20,8 +22,11 @@ import { restaurarArticulos } from './restaurar-articulos.js';
 
 const host = '0.0.0.0';
 const puerto = Number(process.env.PORT || 3000);
+const origenVercel = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}`
+  : 'http://localhost:3000';
 const origenesFrontend = new Set((
-  process.env.FRONTEND_URL || 'http://localhost:3000'
+  process.env.FRONTEND_URL || origenVercel
 ).split(',').map(origen => new URL(origen.trim()).origin));
 const atributosCookie = process.env.NODE_ENV === 'production'
   ? '; SameSite=None; Secure'
@@ -127,7 +132,7 @@ async function listarHistorial() {
   }));
 }
 
-const server = createServer(async (solicitud, respuesta) => {
+export async function manejarSolicitud(solicitud, respuesta) {
   respuesta.setHeader('Cache-Control', 'no-store');
 
   try {
@@ -293,50 +298,57 @@ const server = createServer(async (solicitud, respuesta) => {
       error: 'No se pudo completar la operación.'
     });
   }
-});
+}
 
-const datosAdministradorInicial = [
-  process.env.BOOTSTRAP_ADMIN_USERNAME,
-  process.env.BOOTSTRAP_ADMIN_NAME,
-  process.env.BOOTSTRAP_ADMIN_PASSWORD
-];
+export async function prepararEntorno() {
+  const datosAdministradorInicial = [
+    process.env.BOOTSTRAP_ADMIN_USERNAME,
+    process.env.BOOTSTRAP_ADMIN_NAME,
+    process.env.BOOTSTRAP_ADMIN_PASSWORD
+  ];
 
-if (datosAdministradorInicial.some(valor => valor !== undefined)) {
-  if (datosAdministradorInicial.some(
-    valor => typeof valor !== 'string' || !valor.trim()
-  )) {
-    console.error(
-      'El aprovisionamiento requiere BOOTSTRAP_ADMIN_USERNAME, BOOTSTRAP_ADMIN_NAME y BOOTSTRAP_ADMIN_PASSWORD.'
-    );
-  } else {
-    try {
-      const resultado = await aprovisionarAdministrador(...datosAdministradorInicial);
-      console.log(
-        `Aprovisionamiento de ${datosAdministradorInicial[0]}: ${resultado}.`
+  if (datosAdministradorInicial.some(valor => valor !== undefined)) {
+    if (datosAdministradorInicial.some(
+      valor => typeof valor !== 'string' || !valor.trim()
+    )) {
+      console.error(
+        'El aprovisionamiento requiere BOOTSTRAP_ADMIN_USERNAME, BOOTSTRAP_ADMIN_NAME y BOOTSTRAP_ADMIN_PASSWORD.'
       );
-    } catch (error) {
-      if (!(error instanceof ErrorUsuario)) throw error;
-      console.error(`No se pudo aprovisionar el administrador: ${error.message}`);
+    } else {
+      try {
+        const resultado = await aprovisionarAdministrador(...datosAdministradorInicial);
+        console.log(
+          `Aprovisionamiento de ${datosAdministradorInicial[0]}: ${resultado}.`
+        );
+      } catch (error) {
+        if (!(error instanceof ErrorUsuario)) throw error;
+        console.error(`No se pudo aprovisionar el administrador: ${error.message}`);
+      }
     }
   }
-}
 
-// Si no existe ninguno de los artículos recuperados (por ejemplo, tras un reinicio
-// con SQLite efímero en Render Free), los repone. Nunca borra ni sobrescribe registros.
-try {
-  const restauracion = await restaurarArticulos({
-    soloSiFaltan: true,
-    confirmar: true
-  });
-  if (!restauracion.omitida) {
-    console.log(
-      `Restauración inicial: ${restauracion.insertados} artículos insertados.`
-    );
+  // Si no existe ninguno de los artículos recuperados, los repone. Nunca borra
+  // ni sobrescribe registros. Vuelve a ejecutarse en cada arranque/frío.
+  try {
+    const restauracion = await restaurarArticulos({
+      soloSiFaltan: true,
+      confirmar: true
+    });
+    if (!restauracion.omitida) {
+      console.log(
+        `Restauración inicial: ${restauracion.insertados} artículos insertados.`
+      );
+    }
+  } catch (error) {
+    console.error(`No se pudo restaurar el inventario inicial: ${error.message}`);
   }
-} catch (error) {
-  console.error(`No se pudo restaurar el inventario inicial: ${error.message}`);
 }
 
-server.listen(puerto, host, () => {
-  console.log(`API de inventario escuchando en el puerto ${puerto}.`);
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await prepararEntorno();
+
+  const servidor = createServer(manejarSolicitud);
+  servidor.listen(puerto, host, () => {
+    console.log(`API de inventario escuchando en el puerto ${puerto}.`);
+  });
+}
