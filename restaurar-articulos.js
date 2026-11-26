@@ -4,15 +4,20 @@
 //   node restaurar-articulos.js              -> simula (no escribe)
 //   node restaurar-articulos.js --confirmar  -> inserta en la base configurada
 //
+// El servidor también lo llama al arrancar cuando la tabla está vacía, para que
+// los artículos reaparezcan después de un reinicio sin necesidad de Shell.
+//
 // La base se elige igual que el servidor: DATABASE_URL (PostgreSQL) o
 // DATABASE_PATH / datos/inventario.sqlite (SQLite).
 
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { db } from './db.js';
 import { guardarArticulo } from './articulos.js';
 
 // Códigos y nombres recuperados por OCR de las capturas.
 // Los valores con stock 0 no fueron legibles en la captura: verifícalos.
-const articulos = [
+export const articulos = [
   { codigo: 'PPCO-AZR', nombre: 'AZUCAR', categoria: 'Administración', tipo: 'Refrigerios', talla: '', inicial: 5, actual: 5 },
   { codigo: 'BAL-STK-BLA', nombre: 'BALON STAKE BLANCO', categoria: 'Marketing', tipo: 'Merch mkt', talla: '', inicial: 2, actual: 2 },
   { codigo: 'MKCO-BANDERINOI', nombre: 'BANDERINES TRIANGULARES STAKE KICK', categoria: 'Marketing', tipo: 'BRANDING', talla: '', inicial: 4, actual: 4 },
@@ -63,11 +68,17 @@ const articulos = [
   { codigo: 'MKCO-TOTE-01', nombre: 'TOTE BAGS NEGRAS LOGO BLANCO', categoria: 'Marketing', tipo: 'Merch mkt', talla: '', inicial: 97, actual: 97 }
 ];
 
-const confirmar = process.argv.includes('--confirmar');
-let insertados = 0;
-let omitidos = 0;
+export async function restaurarArticulos({ soloSiVacio = false, confirmar = false } = {}) {
+  if (soloSiVacio) {
+    const conteo = await db.get('SELECT COUNT(*) AS n FROM articulos');
+    if (Number(conteo?.n ?? 0) > 0) {
+      return { insertados: 0, omitidos: 0, omitida: true };
+    }
+  }
 
-try {
+  let insertados = 0;
+  let omitidos = 0;
+
   for (const articulo of articulos) {
     const existente = await db.get(
       'SELECT id FROM articulos WHERE codigo = ?',
@@ -109,10 +120,23 @@ try {
     console.log(`INSERTADO: ${articulo.codigo}`);
   }
 
-  console.log(
-    `\n${confirmar ? 'Restauración completada' : 'Simulación'}: ` +
-    `${insertados} insertados, ${omitidos} omitidos.`
-  );
-} finally {
-  await db.close();
+  return { insertados, omitidos, omitida: false };
+}
+
+async function principal() {
+  const confirmar = process.argv.includes('--confirmar');
+
+  try {
+    const resultado = await restaurarArticulos({ confirmar });
+    console.log(
+      `\n${confirmar ? 'Restauración completada' : 'Simulación'}: ` +
+      `${resultado.insertados} insertados, ${resultado.omitidos} omitidos.`
+    );
+  } finally {
+    await db.close();
+  }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await principal();
 }

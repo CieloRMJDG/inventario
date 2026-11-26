@@ -28,7 +28,9 @@ El frontend estático vive en `public/` y se despliega en Vercel o GitHub Pages.
 corre en Render y usa PostgreSQL cuando se configura `DATABASE_URL`; sin esa variable,
 usa SQLite local, que no es persistente en Render Free. Crea una base PostgreSQL
 gestionada y guarda su cadena de conexión únicamente en **Render > Environment** como
-`DATABASE_URL`. Al arrancar, el API crea el esquema y las categorías iniciales.
+`DATABASE_URL`. Al arrancar, el API crea el esquema y las categorías iniciales. Si la
+tabla de artículos está vacía, también repone automáticamente los artículos recuperados
+en `restaurar-articulos.js`; nunca borra ni sobrescribe registros existentes.
 Vercel reenvía `/api/*` al servicio `inventario-backend-cielo`; en GitHub Pages el
 navegador llama directamente a ese API.
 

@@ -16,6 +16,7 @@ import {
 } from './sesiones.js';
 import { guardarArticulo, ErrorArticulo } from './articulos.js';
 import { registrarMovimiento, ErrorMovimiento } from './movimientos.js';
+import { restaurarArticulos } from './restaurar-articulos.js';
 
 const host = '0.0.0.0';
 const puerto = Number(process.env.PORT || 3000);
@@ -318,6 +319,22 @@ if (datosAdministradorInicial.some(valor => valor !== undefined)) {
       console.error(`No se pudo aprovisionar el administrador: ${error.message}`);
     }
   }
+}
+
+// Si la base está vacía (por ejemplo, SQLite efímero en Render Free), repone los
+// artículos recuperados de las capturas. Nunca borra ni sobrescribe registros.
+try {
+  const restauracion = await restaurarArticulos({
+    soloSiVacio: true,
+    confirmar: true
+  });
+  if (!restauracion.omitida) {
+    console.log(
+      `Restauración inicial: ${restauracion.insertados} artículos insertados.`
+    );
+  }
+} catch (error) {
+  console.error(`No se pudo restaurar el inventario inicial: ${error.message}`);
 }
 
 server.listen(puerto, host, () => {
