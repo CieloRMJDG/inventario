@@ -57,10 +57,11 @@ Las sesiones duran 8 horas y se invalidan cuando el proceso de Render se reinici
 
 El workflow `.github/workflows/pages.yml` publica `public/` en
 `https://cielormjdg.github.io/inventario/` al subir cambios a `main`. En GitHub,
-abre **Settings > Pages** y selecciona **GitHub Actions** como origen de publicación.
-Luego incluye `https://cielormjdg.github.io` en `FRONTEND_URL` de Render como se
-describe arriba y vuelve a desplegar el servicio. La aplicación usa navegación con
-fragmentos (`#/inventario`) para que GitHub Pages no necesite configurar rutas del servidor.
+el workflow intenta habilitar Pages automáticamente; si la configuración del
+repositorio lo impide, abre **Settings > Pages** y selecciona **GitHub Actions**
+como origen de publicación. Incluye `https://cielormjdg.github.io` en `FRONTEND_URL`
+de Render como se describe arriba. La aplicación usa navegación con fragmentos
+(`#/inventario`) para que GitHub Pages no necesite configurar rutas del servidor.
 
 GitHub Pages y Render son dominios distintos. El inicio de sesión usa una cookie
 `SameSite=None; Secure`, pero navegadores que bloqueen cookies de terceros pueden
