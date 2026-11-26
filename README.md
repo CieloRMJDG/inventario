@@ -36,6 +36,21 @@ otro artículo. El stock **no** se cambia desde ese formulario: se ajusta con
 La columna `descripcion` se agrega automáticamente a una base existente al arrancar la
 API, sin borrar ni sobrescribir artículos.
 
+## Reportes PDF
+
+Desde **Reportes PDF** en la barra de acciones se elige una fecha **Desde** y una
+fecha **Hasta**. La API genera un PDF con:
+
+- Resumen del periodo: movimientos, artículos involucrados, entradas, salidas y ajustes.
+- Detalle de cada movimiento: fecha, artículo, categoría, tipo, stock anterior,
+  stock posterior, usuario que registró y motivo.
+- Una cabecera con el rango y el nombre de quien genera el reporte.
+
+Las fechas son inclusivas y se interpretan en hora de Bogotá (UTC-5). El endpoint es
+`GET /api/reportes?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` y requiere sesión iniciada.
+El rango máximo es de 5 años y el PDF está limitado a 10.000 movimientos para evitar
+archivos enormes; si se supera, acorta el periodo. El reporte no modifica ni borra datos.
+
 ## Despliegue 100% en Vercel (plan gratuito)
 
 El frontend estático vive en `public/` y la API son funciones serverless en `api/`.

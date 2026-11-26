@@ -40,6 +40,37 @@ function enviarFormulario(ruta, datos, metodo = 'POST') {
   });
 }
 
+function fechaLocalColombia() {
+  return new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+async function descargarReporte(desde, hasta) {
+  const consulta = new URLSearchParams({ desde, hasta });
+  const respuesta = await fetch(`${apiBase}/api/reportes?${consulta}`, {
+    credentials: 'include'
+  });
+
+  if (!respuesta.ok) {
+    const contenido = await respuesta.json().catch(() => ({}));
+    throw new Error(contenido.error || 'No se pudo generar el reporte.');
+  }
+
+  const tipo = respuesta.headers.get('content-type') || '';
+  if (!tipo.includes('application/pdf')) {
+    throw new Error('El servidor no devolvió un PDF.');
+  }
+
+  const blob = await respuesta.blob();
+  const enlaceDescarga = URL.createObjectURL(blob);
+  const ancla = document.createElement('a');
+  ancla.href = enlaceDescarga;
+  ancla.download = `reporte-inventario-${desde}-a-${hasta}.pdf`;
+  document.body.appendChild(ancla);
+  ancla.click();
+  ancla.remove();
+  setTimeout(() => URL.revokeObjectURL(enlaceDescarga), 1000);
+}
+
 function pagina(titulo, contenido) {
   document.title = `${titulo} | Inventario`;
   app.innerHTML = contenido;
@@ -122,6 +153,7 @@ function renderizarArticulos(usuario, articulos) {
     <nav class="acciones" aria-label="Acciones del inventario">
       <a class="boton" href="${enlace('/inventario/nuevo')}">+ Nuevo artículo</a>
       <a class="boton boton-secundario" href="${enlace('/inventario/historial')}">Historial</a>
+      <a class="boton boton-secundario" href="${enlace('/reportes')}">Reportes PDF</a>
       ${usuario.perfil === 'administrador'
         ? `<a class="boton boton-secundario" href="${enlace('/usuarios')}">Administrar usuarios</a>`
         : ''}
@@ -468,6 +500,32 @@ async function renderizarHistorial() {
   document.body.className = '';
 }
 
+async function renderizarReportes() {
+  const hoy = fechaLocalColombia();
+
+  pagina('Reportes PDF', `
+    <header class="introduccion-formulario">
+      <p class="etiqueta-seccion">Reportes</p>
+      <h1>Reportes PDF</h1>
+      <p>Genera un PDF con los movimientos entre dos fechas, su resumen y el responsable de cada registro.</p>
+    </header>
+    <form id="formulario-reporte" class="formulario-articulo formulario-reporte">
+      <label class="campo">Desde
+        <input name="desde" type="date" value="${hoy}" required>
+      </label>
+      <label class="campo">Hasta
+        <input name="hasta" type="date" value="${hoy}" required>
+      </label>
+      <div class="acciones-formulario">
+        <button type="submit">Generar PDF</button>
+        <a href="${enlace('/inventario')}">Volver a Artículos</a>
+      </div>
+    </form>
+    <p id="estado-reporte" class="reporte-estado" role="status" aria-live="polite"></p>
+  `);
+  document.body.className = '';
+}
+
 async function iniciar() {
   const fragmento = window.location.hash.slice(1) || (
     window.location.hostname.endsWith('.github.io')
@@ -505,6 +563,8 @@ async function iniciar() {
     await renderizarMovimiento(consulta.get('codigo'));
   } else if (ruta === '/inventario/historial') {
     await renderizarHistorial();
+  } else if (ruta === '/reportes') {
+    renderizarReportes();
   } else if (ruta === '/usuarios') {
     if (usuario.perfil !== 'administrador') {
       pagina('Acceso denegado', '<h1>Se requiere el perfil de administración.</h1>' + botonVolver());
@@ -531,6 +591,27 @@ app.addEventListener('submit', async evento => {
     window.location.assign(formulario.dataset.redirect);
   } catch (error) {
     mostrarError(error);
+  }
+});
+
+app.addEventListener('submit', async evento => {
+  const formulario = evento.target.closest('#formulario-reporte');
+  if (!formulario) return;
+  evento.preventDefault();
+
+  const estado = document.querySelector('#estado-reporte');
+  const boton = formulario.querySelector('button[type="submit"]');
+  const datos = Object.fromEntries(new FormData(formulario).entries());
+
+  try {
+    estado.textContent = 'Generando reporte...';
+    boton.disabled = true;
+    await descargarReporte(datos.desde, datos.hasta);
+    estado.textContent = 'PDF descargado correctamente.';
+  } catch (error) {
+    estado.textContent = error.message;
+  } finally {
+    boton.disabled = false;
   }
 });
 

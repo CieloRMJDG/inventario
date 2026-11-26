@@ -251,6 +251,8 @@ const adaptadorPublico = usaPostgres
       run: (sql, parametros = []) => encolarOperacion(() => adaptador.run(sql, parametros))
     };
 
+export const esPostgres = usaPostgres;
+
 export const db = {
   ...adaptadorPublico,
   async transaction(operacion) {

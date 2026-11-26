@@ -18,6 +18,7 @@ import {
 } from './sesiones.js';
 import { guardarArticulo, editarArticulo, ErrorArticulo } from './articulos.js';
 import { registrarMovimiento, ErrorMovimiento } from './movimientos.js';
+import { generarReportePdf, ErrorReporte } from './reportes.js';
 import { restaurarArticulos } from './restaurar-articulos.js';
 
 const host = '0.0.0.0';
@@ -42,6 +43,15 @@ class ErrorSolicitud extends Error {
 function responderJson(respuesta, estado, contenido) {
   respuesta.writeHead(estado, { 'Content-Type': 'application/json; charset=utf-8' });
   respuesta.end(JSON.stringify(contenido));
+}
+
+function responderPdf(respuesta, pdf, nombreArchivo) {
+  respuesta.writeHead(200, {
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `attachment; filename="${nombreArchivo}"`,
+    'Content-Length': pdf.length
+  });
+  respuesta.end(pdf);
 }
 
 function exigirOrigen(solicitud) {
@@ -136,7 +146,8 @@ export async function manejarSolicitud(solicitud, respuesta) {
   respuesta.setHeader('Cache-Control', 'no-store');
 
   try {
-    const { pathname: ruta } = new URL(solicitud.url, 'http://localhost');
+    const url = new URL(solicitud.url, 'http://localhost');
+    const ruta = url.pathname;
 
     if (ruta.startsWith('/api/')) {
       const origen = solicitud.headers.origin;
@@ -220,6 +231,17 @@ export async function manejarSolicitud(solicitud, respuesta) {
       return responderJson(respuesta, 200, await listarHistorial());
     }
 
+    if (solicitud.method === 'GET' && ruta === '/api/reportes') {
+      const pdf = await generarReportePdf({
+        desde: url.searchParams.get('desde'),
+        hasta: url.searchParams.get('hasta'),
+        nombreUsuario: usuario.nombre
+      });
+      const nombreArchivo =
+        `reporte-inventario-${url.searchParams.get('desde')}-a-${url.searchParams.get('hasta')}.pdf`;
+      return responderPdf(respuesta, pdf, nombreArchivo);
+    }
+
     if (solicitud.method === 'GET' && ruta === '/api/usuarios') {
       if (!exigirAdministrador(usuario, respuesta)) return;
       const cuentas = await db.all(`
@@ -292,6 +314,7 @@ export async function manejarSolicitud(solicitud, respuesta) {
       error instanceof ErrorUsuario ||
       error instanceof ErrorArticulo ||
       error instanceof ErrorMovimiento ||
+      error instanceof ErrorReporte ||
       error instanceof ErrorSolicitud
     ) {
       return responderJson(
