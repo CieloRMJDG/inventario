@@ -107,7 +107,8 @@ h1 {
 }
 
 .campo input,
-.campo select {
+.campo select,
+.campo textarea {
   font-weight: 400;
 }
 
@@ -193,7 +194,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   min-height: 2.9rem;
   padding: .6rem .8rem;
@@ -274,6 +276,12 @@ tbody tr:last-child td {
 
 tbody tr:hover {
   background: var(--fondo);
+}
+
+.columna-descripcion {
+  max-width: 18rem;
+  overflow-wrap: anywhere;
+  color: var(--secundario);
 }
 
 [role="alert"] {

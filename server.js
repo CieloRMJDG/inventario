@@ -16,7 +16,7 @@ import {
   cerrarSesion,
   DURACION_SESION
 } from './sesiones.js';
-import { guardarArticulo, ErrorArticulo } from './articulos.js';
+import { guardarArticulo, editarArticulo, ErrorArticulo } from './articulos.js';
 import { registrarMovimiento, ErrorMovimiento } from './movimientos.js';
 import { restaurarArticulos } from './restaurar-articulos.js';
 
@@ -103,7 +103,7 @@ function comoFormulario(datos) {
 
 async function listarArticulos() {
   return db.all(`
-    SELECT a.codigo, a.nombre, c.nombre AS categoria, t.nombre AS tipo,
+    SELECT a.codigo, a.nombre, a.descripcion, c.nombre AS categoria, t.nombre AS tipo,
            a.talla, a.stock_inicial, a.stock_actual
     FROM articulos AS a
     JOIN categorias AS c ON c.id = a.categoria_id
@@ -152,7 +152,7 @@ export async function manejarSolicitud(solicitud, respuesta) {
           return responderJson(respuesta, 403, { error: 'Origen no autorizado.' });
         }
 
-        respuesta.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE');
+        respuesta.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
         respuesta.setHeader('Access-Control-Allow-Headers', 'Content-Type');
         respuesta.writeHead(204);
         return respuesta.end();
@@ -231,12 +231,20 @@ export async function manejarSolicitud(solicitud, respuesta) {
       return responderJson(respuesta, 200, cuentas);
     }
 
-    if (solicitud.method === 'POST') exigirOrigen(solicitud);
+    if (solicitud.method === 'POST' || solicitud.method === 'PUT') {
+      exigirOrigen(solicitud);
+    }
 
     if (solicitud.method === 'POST' && ruta === '/api/articulos') {
       const datos = await leerJson(solicitud);
       await guardarArticulo(comoFormulario(datos));
       return responderJson(respuesta, 201, { status: 'created' });
+    }
+
+    if (solicitud.method === 'PUT' && ruta === '/api/articulos') {
+      const datos = await leerJson(solicitud);
+      await editarArticulo(comoFormulario(datos));
+      return responderJson(respuesta, 200, { status: 'updated' });
     }
 
     if (solicitud.method === 'POST' && ruta === '/api/movimientos') {

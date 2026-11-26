@@ -22,6 +22,20 @@ Las cuentas creadas sin indicar un perfil usan `inventario`:
 node crear-usuario.js usuario "Nombre de la persona"
 ```
 
+## Artículos: descripción y edición
+
+Cada artículo puede tener una descripción opcional de hasta 240 caracteres. Se muestra
+en la tabla del inventario, en la pantalla de movimientos y se puede crear o modificar
+desde los formularios **Nuevo artículo** y **Editar artículo**.
+
+En la tabla, el enlace **Editar** abre el formulario con código, nombre, descripción,
+categoría, tipo y talla. Los códigos se pueden corregir siempre que no repitan el de
+otro artículo. El stock **no** se cambia desde ese formulario: se ajusta con
+**Mover stock** para conservar el historial de movimientos.
+
+La columna `descripcion` se agrega automáticamente a una base existente al arrancar la
+API, sin borrar ni sobrescribir artículos.
+
 ## Despliegue 100% en Vercel (plan gratuito)
 
 El frontend estático vive en `public/` y la API son funciones serverless en `api/`.

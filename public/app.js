@@ -89,6 +89,7 @@ function renderizarArticulos(usuario, articulos) {
     <tr class="fila-articulo" data-busqueda="${escapar([
       articulo.codigo,
       articulo.nombre,
+      articulo.descripcion || '',
       articulo.categoria,
       articulo.tipo,
       articulo.talla || '',
@@ -97,12 +98,16 @@ function renderizarArticulos(usuario, articulos) {
     ].join(' '))}">
       <td>${escapar(articulo.codigo)}</td>
       <td>${escapar(articulo.nombre)}</td>
+      <td class="columna-descripcion">${escapar(articulo.descripcion || '—')}</td>
       <td>${escapar(articulo.categoria)}</td>
       <td>${escapar(articulo.tipo)}</td>
       <td>${escapar(articulo.talla || '—')}</td>
       <td>${articulo.stock_inicial}</td>
       <td>${articulo.stock_actual}</td>
-      <td><a href="${enlace(`/inventario/movimiento?codigo=${encodeURIComponent(articulo.codigo)}`)}">Mover stock</a></td>
+      <td>
+        <a href="${enlace(`/inventario/editar?codigo=${encodeURIComponent(articulo.codigo)}`)}">Editar</a>
+        · <a href="${enlace(`/inventario/movimiento?codigo=${encodeURIComponent(articulo.codigo)}`)}">Mover stock</a>
+      </td>
     </tr>
   `).join('');
 
@@ -123,7 +128,7 @@ function renderizarArticulos(usuario, articulos) {
     </nav>
     <div class="busqueda-articulos" role="search">
       <label for="buscar-articulos">Buscar artículos
-        <input id="buscar-articulos" type="search" placeholder="Nombre, código, categoría o tipo" autocomplete="off">
+        <input id="buscar-articulos" type="search" placeholder="Nombre, código, descripción, categoría o tipo" autocomplete="off">
       </label>
       <p id="resultado-busqueda" class="resultado-busqueda" aria-live="polite"></p>
     </div>
@@ -131,13 +136,14 @@ function renderizarArticulos(usuario, articulos) {
       <table aria-label="Artículos del inventario">
         <thead><tr>
           <th scope="col">Código</th><th scope="col">Artículo</th>
-          <th scope="col">Categoría</th><th scope="col">Tipo</th>
-          <th scope="col">Talla</th><th scope="col">Stock inicial</th>
-          <th scope="col">Stock actual</th><th scope="col">Acción</th>
+          <th scope="col">Descripción</th><th scope="col">Categoría</th>
+          <th scope="col">Tipo</th><th scope="col">Talla</th>
+          <th scope="col">Stock inicial</th><th scope="col">Stock actual</th>
+          <th scope="col">Acción</th>
         </tr></thead>
         <tbody id="lista-articulos">
-          ${filas || '<tr><td colspan="8">Aún no hay artículos registrados.</td></tr>'}
-          <tr id="sin-resultados" hidden><td colspan="8">No hay artículos que coincidan con la búsqueda.</td></tr>
+          ${filas || '<tr><td colspan="9">Aún no hay artículos registrados.</td></tr>'}
+          <tr id="sin-resultados" hidden><td colspan="9">No hay artículos que coincidan con la búsqueda.</td></tr>
         </tbody>
       </table>
     </div>
@@ -287,6 +293,9 @@ async function renderizarNuevoArticulo() {
     ${formularioApi('/api/articulos', '/inventario', `
       <label class="campo">Código<input name="codigo" maxlength="25" required></label>
       <label class="campo">Nombre<input name="nombre" maxlength="55" required></label>
+      <label class="campo">Descripción <span class="campo-ayuda">Opcional, hasta 240 caracteres</span>
+        <textarea name="descripcion" maxlength="240" rows="3"></textarea>
+      </label>
       <label class="campo">Categoría
         <select name="categoria" required>
           <option value="">Selecciona una categoría</option>${opciones(categorias)}
@@ -325,6 +334,70 @@ async function renderizarNuevoArticulo() {
   });
 }
 
+async function renderizarEditarArticulo(codigo) {
+  const [articulos, { categorias, tipos }] = await Promise.all([
+    api('/api/articulos'),
+    api('/api/opciones-articulos')
+  ]);
+  const articulo = articulos.find(item => item.codigo === codigo);
+
+  if (!articulo) {
+    pagina('Artículo no encontrado', '<h1>No se encontró el artículo.</h1>' + botonVolver());
+    return;
+  }
+
+  const opciones = (filas, seleccionada) => filas
+    .map(fila => `<option${fila.nombre === seleccionada ? ' selected' : ''}>${escapar(fila.nombre)}</option>`)
+    .join('');
+
+  pagina('Editar artículo', `
+    <header class="introduccion-formulario">
+      <p class="etiqueta-seccion">Inventario</p>
+      <h1>Editar artículo</h1>
+      <p>Stock actual: <strong>${articulo.stock_actual}</strong>. Para cambiarlo usa “Mover stock”.</p>
+    </header>
+    ${formularioApi('/api/articulos', '/inventario', `
+      <input type="hidden" name="codigo_original" value="${escapar(articulo.codigo)}">
+      <label class="campo">Código<input name="codigo" maxlength="25" value="${escapar(articulo.codigo)}" required></label>
+      <label class="campo">Nombre<input name="nombre" maxlength="55" value="${escapar(articulo.nombre)}" required></label>
+      <label class="campo">Descripción <span class="campo-ayuda">Opcional, hasta 240 caracteres</span>
+        <textarea name="descripcion" maxlength="240" rows="3">${escapar(articulo.descripcion || '')}</textarea>
+      </label>
+      <label class="campo">Categoría
+        <select name="categoria" required>
+          <option value="">Selecciona una categoría</option>${opciones(categorias, articulo.categoria)}
+        </select>
+      </label>
+      <label class="campo">Tipo existente
+        <select name="tipo"><option value="">Selecciona un tipo</option>${opciones(tipos, articulo.tipo)}</select>
+      </label>
+      <details class="nuevo-tipo">
+        <summary class="boton boton-secundario">Crear un tipo nuevo</summary>
+        <label class="campo">Nombre del tipo
+          <input id="tipo-nuevo" name="tipo_nuevo" maxlength="30">
+          <span class="campo-ayuda">Hasta 30 caracteres.</span>
+        </label>
+      </details>
+      <label class="campo">Talla <span class="campo-ayuda">Opcional</span>
+        <input name="talla" maxlength="15" value="${escapar(articulo.talla || '')}">
+      </label>
+      <div class="acciones-formulario">
+        <button type="submit">Guardar cambios</button><a href="${enlace('/inventario')}">Volver a Artículos</a>
+      </div>
+    `, 'formulario-articulo', 'PUT')}
+  `);
+  document.body.className = '';
+
+  const tipoExistente = document.querySelector('[name="tipo"]');
+  const tipoNuevo = document.querySelector('[name="tipo_nuevo"]');
+  tipoExistente.addEventListener('change', () => {
+    if (tipoExistente.value) tipoNuevo.value = '';
+  });
+  tipoNuevo.addEventListener('input', () => {
+    if (tipoNuevo.value.trim()) tipoExistente.value = '';
+  });
+}
+
 async function renderizarMovimiento(codigo) {
   const articulos = await api('/api/articulos');
   const articulo = articulos.find(item => item.codigo === codigo);
@@ -337,6 +410,7 @@ async function renderizarMovimiento(codigo) {
   pagina('Mover stock', `
     <h1>Mover stock</h1>
     <p>${escapar(articulo.nombre)} · ${escapar(articulo.codigo)}</p>
+    ${articulo.descripcion ? `<p>${escapar(articulo.descripcion)}</p>` : ''}
     <p>Stock actual: <strong>${articulo.stock_actual}</strong></p>
     ${formularioApi('/api/movimientos', '/inventario', `
       <input type="hidden" name="codigo" value="${escapar(articulo.codigo)}">
@@ -425,6 +499,8 @@ async function iniciar() {
     renderizarArticulos(usuario, await api('/api/articulos'));
   } else if (ruta === '/inventario/nuevo') {
     await renderizarNuevoArticulo();
+  } else if (ruta === '/inventario/editar') {
+    await renderizarEditarArticulo(consulta.get('codigo'));
   } else if (ruta === '/inventario/movimiento') {
     await renderizarMovimiento(consulta.get('codigo'));
   } else if (ruta === '/inventario/historial') {

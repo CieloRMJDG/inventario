@@ -86,6 +86,7 @@ function inicializarSqlite() {
       id INTEGER PRIMARY KEY,
       codigo TEXT NOT NULL UNIQUE CHECK (length(trim(codigo)) > 0),
       nombre TEXT NOT NULL CHECK (length(trim(nombre)) > 0),
+      descripcion TEXT NOT NULL DEFAULT '',
       categoria_id INTEGER NOT NULL REFERENCES categorias(id),
       tipo_id INTEGER NOT NULL REFERENCES tipos(id),
       talla TEXT,
@@ -137,6 +138,11 @@ function inicializarSqlite() {
     `);
   }
 
+  const columnasArticulo = sqlite.prepare('PRAGMA table_info(articulos)').all();
+  if (!columnasArticulo.some(columna => columna.name === 'descripcion')) {
+    sqlite.exec("ALTER TABLE articulos ADD COLUMN descripcion TEXT NOT NULL DEFAULT ''");
+  }
+
   const insertarCategoria = sqlite.prepare(`
     INSERT INTO categorias (nombre)
     SELECT ? WHERE NOT EXISTS (
@@ -165,6 +171,7 @@ async function inicializarPostgres() {
       id SERIAL PRIMARY KEY,
       codigo TEXT NOT NULL UNIQUE CHECK (length(trim(codigo)) > 0),
       nombre TEXT NOT NULL CHECK (length(trim(nombre)) > 0),
+      descripcion TEXT NOT NULL DEFAULT '',
       categoria_id INTEGER NOT NULL REFERENCES categorias(id),
       tipo_id INTEGER NOT NULL REFERENCES tipos(id),
       talla TEXT,
@@ -209,6 +216,14 @@ async function inicializarPostgres() {
       vence BIGINT NOT NULL
     );
   `);
+
+  const columnaDescripcion = await pool.query(`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'articulos' AND column_name = 'descripcion'
+  `);
+  if (columnaDescripcion.rowCount === 0) {
+    await pool.query("ALTER TABLE articulos ADD COLUMN descripcion TEXT NOT NULL DEFAULT ''");
+  }
 
   for (const nombre of categoriasIniciales) {
     await pool.query(
